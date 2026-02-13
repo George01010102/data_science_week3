@@ -3,6 +3,8 @@ library(here)
 library(naniar)
 library(janitor)
 library(skimr)
+install.packages("performance")
+library(performance)
 cuckoo <- read_csv(here("data_science_week3","week3","data","cuckoo.csv"))
 
 ggplot(cuckoo, aes(x = Mass, y = Beg, colour = Species)) + 
@@ -17,3 +19,7 @@ ggplot(cuckoo, aes(x = Mass, y = Beg, colour = Species)) +
 cuckoo_lm <- lm(Beg ~ Mass * Species, data = cuckoo)
 
 summary(cuckoo_lm)
+
+
+#examine diagnostics
+check_model(cuckoo_lm, detrend = FALSE)
