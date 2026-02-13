@@ -134,3 +134,45 @@ dispersion_comparison
 
 #Has dispersion reduced?
 check_overdispersion(cuckoo_glm_int)
+
+
+
+#Compare the fits between these models
+anova(cuckoo_glm_add, cuckoo_glm_int)
+
+
+
+# Generate predictions for both models
+pred_additive <- emmeans(cuckoo_glm_add,
+                         specs = ~ Mass + Species,
+                         at = list(Mass = seq(0, 40, by = 1)),
+                         type = "response") |>
+  as_tibble() |>
+  mutate(Model = "Additive")
+
+pred_interaction <- emmeans(cuckoo_glm_int,
+                            specs = ~ Mass + Species,
+                            at = list(Mass = seq(0, 40, by = 1)),
+                            type = "response") |>
+  as_tibble() |>
+  mutate(Model = "Interaction")
+
+predictions_combined <- bind_rows(pred_additive, pred_interaction)
+
+ggplot(predictions_combined, aes(x = Mass, y = rate, colour = Species)) +
+  geom_point(data = cuckoo, aes(y = Beg), alpha = 0.4) +
+  geom_line(aes(linetype = Model), linewidth = 1) +
+  scale_colour_manual(values = c("darkorange", "steelblue")) +
+  labs(x = "Nestling mass (g)",
+       y = "Begging calls per 6 seconds",
+       title = "Model comparison: Additive vs Interaction") +
+  theme_minimal() +
+  theme(legend.position = "right")+
+  facet_wrap(~Model)
+
+
+
+#Addressing remaining model checks
+check_model(cuckoo_glm_int, 
+            residual_type = "normal",
+            detrend = FALSE)
