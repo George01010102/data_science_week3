@@ -1,4 +1,9 @@
 library(tidyverse)
+library(here)
+library(naniar)
+library(janitor)
+library(skimr)
+cuckoo <- read_csv(here("data_science_week3","week3","data","cuckoo.csv"))
 
 ggplot(cuckoo, aes(x = Mass, y = Beg, colour = Species)) + 
   geom_point(size = 3, alpha = 0.6) +
