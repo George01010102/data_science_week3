@@ -7,6 +7,8 @@ install.packages("performance")
 library(performance)
 library(see)
 library(emmeans)
+library(DHARMa)
+library(broom)
 cuckoo <- read_csv(here("data_science_week3","week3","data","cuckoo.csv"))
 
 ggplot(cuckoo, aes(x = Mass, y = Beg, colour = Species)) + 
@@ -176,3 +178,157 @@ ggplot(predictions_combined, aes(x = Mass, y = rate, colour = Species)) +
 check_model(cuckoo_glm_int, 
             residual_type = "normal",
             detrend = FALSE)
+
+
+#quassi-poisson
+cuckoo_quasi <- glm(Beg ~ Mass * Species, 
+                    data = cuckoo, 
+                    family = quasipoisson(link = "log"))
+
+summary(cuckoo_quasi)
+
+
+#Negative binomial
+library(MASS)
+cuckoo_negbin <- glm.nb(Beg ~ Mass * Species, 
+                        data = cuckoo)
+
+summary(cuckoo_negbin)
+
+
+
+#compare models using AIC
+AIC(cuckoo_glm_int, cuckoo_negbin)
+
+
+
+#Critical check: Does the model capture the variance structure?
+check_model(cuckoo_negbin, detrend = FALSE)
+
+
+
+# Extract coefficients with confidence intervals
+coef_poisson <- tidy(cuckoo_glm_int, conf.int = TRUE) |>
+  mutate(Model = "Poisson")
+
+coef_quasi <- tidy(cuckoo_quasi, conf.int = TRUE) |>
+  mutate(Model = "Quasi-Poisson")
+
+coef_negbin <- tidy(cuckoo_negbin, conf.int = TRUE) |>
+  mutate(Model = "Negative Binomial")
+
+coef_comparison <- bind_rows(coef_poisson, coef_quasi, coef_negbin) |>
+  filter(term == "Mass:SpeciesWarbler") |>  
+  dplyr::select(Model, estimate, std.error, conf.low, conf.high, p.value)
+
+coef_comparison
+
+
+
+#Visualize the uncertainty
+ggplot(coef_comparison, aes(x = Model, y = estimate)) +
+  geom_point(size = 4) +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), 
+                width = 0.2, linewidth = 1.2) +
+  geom_hline(yintercept = 0, linetype = "dashed", 
+             colour = "red", linewidth = 1) +
+  labs(y = "Interaction coefficient (Mass:SpeciesWarbler)",
+       x = "",
+       title = "Same data, different inferences") +
+  theme_minimal(base_size = 14) +
+  theme(panel.grid.major.x = element_blank()) +
+  coord_flip()
+
+
+#Look at the p-values
+coef_comparison |>
+  mutate(
+    Significant = if_else(p.value < 0.05, "Yes", "No"),
+    `CI crosses zero` = if_else(conf.low < 0 & conf.high > 0, "Yes", "No")
+  ) |>
+  dplyr::select(Model, estimate, p.value, Significant, `CI crosses zero`)
+
+
+
+
+## Final model predictions
+predictions_final <- emmeans(cuckoo_quasi,
+                             specs = ~ Mass + Species,
+                             at = list(Mass = seq(0, 40, by = 0.5)),
+                             type = "response") |>
+  as_tibble()
+
+fig_main <- ggplot(predictions_final,
+                   aes(x = Mass, y = rate,
+                       colour = Species, fill = Species)) +
+  geom_ribbon(aes(ymin = asymp.LCL, ymax = asymp.UCL),
+              alpha = 0.15, colour = NA) +
+  # Mean estimate
+  geom_line(linewidth = 1.2) +
+  # Raw data
+  geom_point(data = cuckoo,
+             aes(y = Beg),
+             size = 2.5,
+             alpha = 0.6) +
+  
+  scale_colour_manual(values = c("Cuckoo" = "darkorange", "Warbler" = "steelblue"),
+                      labels = c("Cuckoo", "Reed warbler")
+                      
+  ) +
+  scale_fill_manual(values = c("Cuckoo" = "darkorange", "Warbler" = "steelblue"),
+                    labels = c("Cuckoo", "Reed warbler")
+                    
+  ) +
+  scale_x_continuous(breaks = seq(0, 40, by = 10)) +
+  scale_y_continuous(breaks = seq(0, 100, by = 10)) +
+  
+  labs(
+    x = "Nestling mass (g)",
+    y = "Begging calls per 6 seconds",
+    colour = NULL,
+    fill = NULL
+  ) +
+  theme_minimal(base_size = 12)
+
+
+fig_main
+
+
+
+# Exponentiated coefficients (rate ratios)
+tidy(cuckoo_quasi, exponentiate = TRUE, conf.int = TRUE)
+
+# Additive model
+
+cuckoo_quasi_add <- glm(Beg ~ Mass + Species, family = poisson(link = "log"), data = cuckoo)
+
+tidy(cuckoo_quasi_add, exponentiate = TRUE, conf.int = TRUE)
+
+# Predictions at specific mass values
+pred_key_masses <- emmeans(cuckoo_quasi,
+                           specs = ~ Species + Mass,
+                           at = list(Mass = c(10, 40)),
+                           type = "response") |>
+  as_tibble()
+
+pred_key_masses
+
+# Rate ratios: how much does calling increase per gram?
+# For cuckoos: exp(β_Mass)
+# For warblers: exp(β_Mass + β_Mass:SpeciesWarbler)
+
+# Formal test of interaction
+drop1(cuckoo_quasi, test = "F")
+
+
+
+#Zero-inflation models
+cuckoo |>
+  group_by(Species) |>
+  summarise(
+    n = n(),
+    n_zeros = sum(Beg == 0),
+    prop_zeros = n_zeros / n,
+    pct_zeros = prop_zeros * 100
+  )
+
