@@ -22,7 +22,7 @@ ggplot(cuckoo, aes(x = Mass, y = Beg, colour = Species)) +
 #makes linear model of cuckoo data
 cuckoo_lm <- lm(Beg ~ Mass * Species, data = cuckoo)
 
-summary(cuckoo_lm)
+summary(cuckoo_lm) #summarises
 
 
 #examine diagnostics
